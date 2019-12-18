@@ -1,9 +1,11 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +23,8 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/logql/unmarshal"
 )
 
 const (
@@ -32,6 +36,25 @@ var (
 	success = &logproto.PushResponse{}
 	ctx     = user.InjectOrgID(context.Background(), "test")
 )
+
+func TestNoLabelError(t *testing.T) {
+	var req logproto.PushRequest
+	d := prepare(t)
+	requestWithNoLabel := `{"streams":[{"stream":{},"values":[["1576684297524812298","{\"tag\":\"logs\",\"log\":\"blablabla\"}"]]}]}`
+	rawRequest := bytes.NewBufferString(requestWithNoLabel)
+	err := unmarshal.DecodePushRequest(rawRequest, &req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = d.Push(ctx, &req)
+	if err == nil {
+		t.Fatal("push should return for missing labels")
+	}
+	if !strings.Contains(err.Error(), "missing label") {
+		t.Fatalf("want that error contains: missing label, got: %s", err)
+	}
+}
 
 func TestDistributor(t *testing.T) {
 	for i, tc := range []struct {
